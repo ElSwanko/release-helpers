@@ -12,8 +12,6 @@ header_template = '''
 [b]Кодек:[/b] %(codec)s
 [b]Битрейт:[/b] %(bitrate)s
 [b]Тип рипа:[/b] %(rip_type)s
-
-[brc]
 '''
 
 footer_template = '''
@@ -36,9 +34,9 @@ single_album_template = '''
 %(reports)s
 '''
 
-multi_album_template = '''
-[hide=%(name)s]
+multi_album_template = '''[hide=%(name)s]
 %(cover)s
+
 [b]Трeклист:[/b]
 %(tracklist)s
 
@@ -46,8 +44,7 @@ multi_album_template = '''
 %(reports)s
 [/hide]'''
 
-track_template = '''
-[%(time)s] %(num)s. %(artist)s — %(title)s'''
+track_template = '''[%(time)s] %(num)s. %(artist)s — %(title)s'''
 
 spectrogram_template = '''[url=%(link)s][img]%(thumb)s[/img][/url]'''
 
@@ -74,6 +71,7 @@ named_clips_template = '''
 SPECS_LIMIT = 3
 COVER_WIDTH = 400
 POSTER_WIDTH = 500
+DESC_NAME = 'desc.txt'
 REPO_NAME = 'Folder.auCDtect.txt'
 API_AUTH = {
     'token': 'dL6fE5q5GQzEIq5cQi4f',
@@ -124,16 +122,19 @@ def main(args):
 
     check_poster(args, data_json)
 
-    code = header_template % data_json
-    code += format_albums(args, data_json)
-    code += format_updates(args)
-    code += format_clips(args, data_json)
-    code += format_footer(data_json)
+    code = [
+        header_template % data_json,
+        format_desc(args),
+        format_albums(args, data_json),
+        format_updates(args),
+        format_clips(args, data_json),
+        format_footer(data_json)
+    ]
 
     code_path = os.path.join(args.work_dir, MISC, data_json['name'] + '.txt')
     if os.path.isfile(code_path):
         os.remove(code_path)
-    save_file(code_path, code)
+    save_file(code_path, ''.join(code))
     save_data_json(misc_path, data_json)
     print('Complete bb-code to %s' % code_path)
 
@@ -189,33 +190,27 @@ def clean_tracklist(album):
 
 def clean_images(data_json):
     data_json['poster'] = ''
-    for album, _ in albums_iterator(data_json['albums']): clean_album_images(album)
+    for album, _ in albums_iterator(data_json['albums']):
+        album['cover'] = ''
+        album['spectrograms'] = []
     print('Cleaned images in data file %s' % data_json['name'])
-
-
-def clean_album_images(album):
-    album['cover'] = ''
-    album['spectrograms'] = []
-    print('Cleaned images for album %s' % album['dir'])
 
 
 def format_albums(args, data_json):
     print('Format albums from data file %s' % data_json['name'])
-    albums_str = ''
     meta_keys = sorted(data_json['meta_keys'].keys())
     if len(meta_keys) > 1:
-        for key in meta_keys:
-            albums = filter_albums_by_meta_key(data_json['albums'], key)
-            albums_str += (hide_meta_template if args.hide_meta else show_meta_template) % \
-                          {'meta_key': data_json['meta_keys'][key], 'albums_str': process_albums(args, albums)}
+        albums_str = '\n'.join([(hide_meta_template if args.hide_meta else show_meta_template) % {
+            'meta_key': data_json['meta_keys'][key],
+            'albums_str': process_albums(args, filter_albums(data_json['albums'], key))
+        } for key in meta_keys])
     else:
-        albums = filter_albums_by_meta_key(data_json['albums'], meta_keys[0])
-        albums_str = process_albums(args, albums)
+        albums_str = process_albums(args, filter_albums(data_json['albums'], meta_keys[0]))
     print('Albums in data file %s formatted' % data_json['name'])
     return albums_str
 
 
-def filter_albums_by_meta_key(albums, key):
+def filter_albums(albums, key):
     result = list(filter(lambda album: album['meta_key'] == int(key), albums))
     result = sorted(result, key=lambda k: k['dir'])
     print('Filtered %d albums by meta_key %s' % (len(result), key))
@@ -268,7 +263,7 @@ def format_dir(dir_name):
 
 
 def format_tracks(album):
-    track_list = ''.join([track_template % track for track in sorted(album['tracklist'], key=lambda k: k['num'])])
+    track_list = '\n'.join([track_template % track for track in sorted(album['tracklist'], key=lambda k: k['num'])])
     print('Formatted tracklist in album %s' % album['dir'])
     return track_list
 
@@ -309,19 +304,21 @@ def get_cover(args, album, parent=None):
 
 def format_reports(args, album, parent=None):
     print('Format reports for album %s' % album['dir'])
-    repo_str = ''
+    reports = ['']
     aucdtect = get_aucdtect_report(args, album, parent)
     if len(aucdtect) > 0:
-        repo_str += ''.join(['\n[spoiler=Отчёт auCDtect][pre]',
-                             '\n'.join([line for line in aucdtect]), '[/pre][/spoiler]'])
+        reports.append('[spoiler=Отчёт auCDtect][pre]')
+        reports.extend(aucdtect)
+        reports.append('[/pre][/spoiler]')
         print('Formatted check report for album %s' % album['dir'])
     specs = get_spectrograms(args, album, parent)
     if len(specs) > 0:
-        repo_str += ''.join(['\n[spoiler=Спектрограммы]',
-                             ''.join([spectrogram_template % specs[i] for i in
-                                      range(0, (SPECS_LIMIT if args.limit_specs else len(specs)))]), '[/spoiler]'])
+        reports.append('[spoiler=Спектрограммы]')
+        reports.append(''.join([spectrogram_template % specs[i]
+                                for i in range(0, (SPECS_LIMIT if args.limit_specs else len(specs)))]))
+        reports.append('[/spoiler]')
         print('Formatted spectrograms for album %s' % album['dir'])
-    return repo_str
+    return '\n'.join(reports)
 
 
 def get_aucdtect_report(args, album, parent=None):
@@ -336,7 +333,7 @@ def get_aucdtect_report(args, album, parent=None):
     print('Found check %s report for album %s' % (misc_path, album['dir']))
     with open(misc_path, 'rb') as f:
         data = f.read()
-        lines = data[data.find(b'-'):].decode('utf-16', errors='strict').split('\n')[14:]
+        lines = data[data.find(b'-'):].decode('utf-16', errors='strict').split('\n')[15:-1]
         if not args.skip_cdda:
             return lines
         result = []
@@ -389,31 +386,46 @@ def format_clips(args, data_json):
     return (named_clips_template if args.named_clips else preview_clips_template) % clips_str
 
 
+def format_desc(args):
+    misc_path = os.path.join(args.work_dir, MISC, DESC_NAME)
+    if not os.path.isfile(misc_path):
+        main_path = os.path.join(args.work_dir, DESC_NAME)
+        if os.path.isfile(main_path):
+            os.rename(main_path, misc_path)
+        else:
+            return '[brc]'
+    desc = ['\n[b]Описание:[/b]\n']
+    with open(misc_path) as f:
+        desc.extend(f.readlines())
+    desc.append('[brc]')
+    return ''.join(desc)
+
+
 def format_updates(args):
     updates_dir = os.path.join(args.work_dir, MISC, UPDATES)
-    updates = os.listdir(updates_dir)
-    if len(updates) == 0:
+    updates_files = os.listdir(updates_dir)
+    if len(updates_files) == 0:
         return ''
-    updates_str = '\n[hr][spoiler=История обновлений]\n'
-    for update_file in sorted(updates):
-        updates_str += '[spoiler=%s]\n' % os.path.basename(update_file)
+    updates = ['\n[hr][spoiler=История обновлений]\n']
+    for update_file in sorted(updates_files):
+        updates.append('[spoiler=%s]\n' % os.path.basename(update_file))
         with open(os.path.join(updates_dir, update_file), encoding='utf-8') as f:
-            for line in f.readlines():
-                updates_str += line
-        updates_str += '[/spoiler]\n'
-    return updates_str + '[/spoiler]\n'
+            updates.extend(f.readlines())
+        updates.append('[/spoiler]\n')
+    updates.append('[/spoiler]\n')
+    return ''.join(updates)
 
 
 def format_footer(data_json):
     header_str = header_str_template % data_json
-    total_time = datetime.timedelta()
     albums = data_json['albums']
+    total_time = datetime.timedelta()
     for album, _ in albums_iterator(albums):
         total_time += parse_time(album['total_time'])
     albums_str = '\n'.join([format_dir(album['dir']) for album in albums[-4:]])
     return footer_template % {
         'header_str': header_str,
-        'total_time': total_time.__str__(),
+        'total_time': total_time,
         'albums_str': albums_str
     }
 
