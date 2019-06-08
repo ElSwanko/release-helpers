@@ -24,7 +24,7 @@ footer_template = '''
 '''
 
 header_str_template = '''
-%(name)s — %(count)s альбомов (%(dates)s) /%(release)s/ %(format)s [%(codec)s|%(bitrate)s|%(rip_type)s] <%(genres)s>'''
+%(name)s — %(count)s альбомов (%(dates)s) %(format)s /%(release)s/ [%(codec)s|%(bitrate)s|%(rip_type)s] <%(genres)s>'''
 
 single_album_template = '''
 [b]Треклист:[/b]
@@ -48,9 +48,7 @@ track_template = '''[%(time)s] %(num)s. %(artist)s — %(title)s'''
 
 spectrogram_template = '''[url=%(link)s][img]%(thumb)s[/img][/url]'''
 
-show_meta_template = '''[hr][align=center][size=18][b]
-%(meta_key)s
-[/b][/size][/align][hr]
+show_meta_template = '''[hr][align=center][size=20][b]%(meta_key)s[/b][/size][/align][hr]
 %(albums_str)s
 '''
 
@@ -122,19 +120,21 @@ def main(args):
 
     check_poster(args, data_json)
 
-    code = [
-        header_template % data_json,
-        format_desc(args),
-        format_albums(args, data_json),
+    code = [header_template % data_json, format_desc(args)]
+
+    code.append(format_albums(args, data_json))
+    save_data_json(misc_path, data_json)
+
+    code.extend([
         format_updates(args),
         format_clips(args, data_json),
         format_footer(data_json)
-    ]
+    ])
 
     code_path = os.path.join(args.work_dir, MISC, data_json['name'] + '.txt')
     if os.path.isfile(code_path):
         os.remove(code_path)
-    save_file(code_path, ''.join(code))
+    save_file(code_path, ''.join(code).replace(UTF8_BOM.decode('utf-8'), ''))
     save_data_json(misc_path, data_json)
     print('Complete bb-code to %s' % code_path)
 
@@ -157,6 +157,7 @@ def save_file(path, data_str):
 def merge_files(misc_path, main_path):
     misc_json = open_data_json(misc_path)
     main_json = open_data_json(main_path)
+    misc_json['meta_keys'].extend(main_json['meta_keys'])
     misc_json['albums'].extend(main_json['albums'])
     misc_json['clips'].extend(main_json['clips'])
     save_data_json(misc_path, misc_json)
@@ -176,6 +177,7 @@ def albums_iterator(albums):
 def clean_data_json(data_json):
     albums = list(filter(lambda a: len(a['dir']) > 0, data_json['albums']))
     for album, _ in albums_iterator(albums): clean_tracklist(album)
+    data_json['meta_keys'] = sorted(data_json['meta_keys'], key=lambda k: k['id'])
     data_json['albums'] = sorted(albums, key=lambda k: k['dir'])
     data_json['count'] = len(albums)
     data_json['name'] = data_json['name'].strip()
@@ -198,20 +200,20 @@ def clean_images(data_json):
 
 def format_albums(args, data_json):
     print('Format albums from data file %s' % data_json['name'])
-    meta_keys = sorted(data_json['meta_keys'].keys())
+    meta_keys = sorted(data_json['meta_keys'], key=lambda k: k['id'])
     if len(meta_keys) > 1:
         albums_str = '\n'.join([(hide_meta_template if args.hide_meta else show_meta_template) % {
-            'meta_key': data_json['meta_keys'][key],
-            'albums_str': process_albums(args, filter_albums(data_json['albums'], key))
+            'meta_key': key['name'],
+            'albums_str': process_albums(args, filter_albums(data_json['albums'], key['id']))
         } for key in meta_keys])
     else:
-        albums_str = process_albums(args, filter_albums(data_json['albums'], meta_keys[0]))
+        albums_str = process_albums(args, filter_albums(data_json['albums'], meta_keys[0]['id']))
     print('Albums in data file %s formatted' % data_json['name'])
     return albums_str
 
 
 def filter_albums(albums, key):
-    result = list(filter(lambda album: album['meta_key'] == int(key), albums))
+    result = list(filter(lambda album: album['meta_key'] == key, albums))
     result = sorted(result, key=lambda k: k['dir'])
     print('Filtered %d albums by meta_key %s' % (len(result), key))
     return result
@@ -245,6 +247,7 @@ def process_multi_album(args, album, parent=None):
 
 
 def process_single_album(args, album):
+    # TODO check cover to poster
     if len(album.get('albums', [])) > 0:
         print('Processing multi-disc album %s of %d discs' % (album['dir'], len(album['albums'])))
         return '\n'.join([process_multi_album(args, child, album)
@@ -274,7 +277,12 @@ def format_cover(cover):
 
 def get_cover(args, album, parent=None):
     print('Get cover for album %s' % album['dir'])
-    if album['cover']:
+    if parent:
+        cover = get_cover(args, parent)
+        if cover:
+            print('Got cover from parent album %s' % parent['dir'])
+            return cover
+    if album.get('cover', ''):
         print('Got saved cover %s' % album['cover'])
         return album['cover']
     misc_path = os.path.join(get_misc_path(args, album, parent), 'cover.jpg')
@@ -394,11 +402,11 @@ def format_desc(args):
             os.rename(main_path, misc_path)
         else:
             return '[brc]'
-    desc = ['\n[b]Описание:[/b]\n']
-    with open(misc_path) as f:
+    desc = ['']
+    with open(misc_path, encoding='utf-8') as f:
         desc.extend(f.readlines())
     desc.append('[brc]')
-    return ''.join(desc)
+    return '\n'.join(desc)
 
 
 def format_updates(args):
@@ -408,7 +416,7 @@ def format_updates(args):
         return ''
     updates = ['\n[hr][spoiler=История обновлений]\n']
     for update_file in sorted(updates_files):
-        updates.append('[spoiler=%s]\n' % os.path.basename(update_file))
+        updates.append('[spoiler=%s]\n' % '.'.join(os.path.basename(update_file).split('.')[:-1]))
         with open(os.path.join(updates_dir, update_file), encoding='utf-8') as f:
             updates.extend(f.readlines())
         updates.append('[/spoiler]\n')
@@ -473,7 +481,7 @@ def check_poster(args, data_json):
     if not os.path.isfile(misc_path):
         main_path = os.path.join(args.work_dir, 'poster.jpg')
         if os.path.isfile(main_path):
-            resize_image(main_path, misc_path)
+            resize_image(main_path, misc_path, new_width=POSTER_WIDTH)
         else:
             data_json['poster'] = ''
             print('No poster found for data file %s ' % data_json['name'])

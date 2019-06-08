@@ -23,7 +23,7 @@ def rename_dirs(work_dir):
             if reverse:
                 os.rename(os.path.join(work_dir, d), os.path.join(work_dir, back_data[d]))
             else:
-                # os.rename(fd, os.path.join(work_dir, '%d' % i))
+                os.rename(fd, os.path.join(work_dir, '%d' % i))
                 back_data[i] = d
                 i += 1
 

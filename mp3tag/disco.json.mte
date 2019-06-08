@@ -11,8 +11,8 @@
 "codec": "FLAC",
 "bitrate": "Lossless|WEB-DL",
 "rip_type": "tracks",
-"clips": [{"name": "", "url": ""}],
-"meta_keys": {"1": "Default"},
+"clips": [{"url": "", "name": ""}],
+"meta_keys": [{"id": 1, "name": "Default"}],
 "albums": ['$loop(%_folderpath%,1)'
     {"dir": "'%_directory%'",
     "meta_key": 1,
