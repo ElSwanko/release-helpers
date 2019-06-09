@@ -38,6 +38,7 @@ multi_album_template = '''[hide=%(name)s]
 %(cover)s
 
 [b]Трeклист:[/b]
+
 %(tracklist)s
 
 [b]Прoдолжительность:[/b] %(time)s
@@ -89,7 +90,7 @@ import json
 import os
 
 import requests
-from PIL import Image
+from PIL import Image, ImageFile
 
 
 def main(args):
@@ -498,10 +499,11 @@ def resize_image(img_path, misc_path, new_width=COVER_WIDTH, convert=False):
     else:
         new_size = (int(img.size[0] * (new_width / img.size[1])), new_width)
     print('Resize cover %s from %s to %s' % (img_path, img.size, new_size))
+    ImageFile.MAXBLOCK = 2 * img.size[0] * img.size[1]
     img = img.resize(new_size, Image.LANCZOS)
     if convert and img.mode == 'RGBA':
         img = img.convert('RGB')
-    img.save(misc_path, 'JPEG')
+    img.save(misc_path, 'JPEG', quality=95, optimize=True, progressive=True)
     print('Resized cover in path %s' % misc_path)
 
 
