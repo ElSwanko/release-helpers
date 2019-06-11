@@ -102,7 +102,7 @@ def main(args):
     misc_path = os.path.join(args.work_dir, MISC, base_name)
 
     if os.path.isfile(misc_path) and os.path.isfile(main_path):
-        merge_files(misc_path, main_path)
+        merge_files(args, misc_path, main_path)
     elif os.path.isfile(main_path):
         os.rename(main_path, misc_path)
     elif not os.path.isfile(misc_path):
@@ -113,57 +113,72 @@ def main(args):
 
     check_misc_dirs(args, data_json)
 
-    if args.clean_images:
-        clean_images(data_json)
+    if args.clean_images: clean_images(data_json)
 
     clean_data_json(data_json)
     save_data_json(misc_path, data_json)
 
-    check_poster(args, data_json)
-
-    code = [header_template % data_json, format_desc(args)]
-
-    code.append(format_albums(args, data_json))
+    albums_str = format_albums(args, data_json)
     save_data_json(misc_path, data_json)
 
-    code.extend([
+    check_poster(args, data_json)
+
+    code = [
+        header_template % data_json,
+        format_desc(args),
+        albums_str,
         format_updates(args),
         format_clips(args, data_json),
         format_footer(data_json)
-    ])
+    ]
 
     code_path = os.path.join(args.work_dir, MISC, data_json['name'] + '.txt')
-    if os.path.isfile(code_path):
-        os.remove(code_path)
-    save_file(code_path, ''.join(code).replace(UTF8_BOM.decode('utf-8'), ''))
+    if os.path.isfile(code_path): os.remove(code_path)
+    save_file(code_path, ''.join(code))
     save_data_json(misc_path, data_json)
     print('Complete bb-code to %s' % code_path)
 
 
 def open_data_json(path):
-    with open(path, 'rb') as f:
-        data = f.read()
-        return json.loads(data[data.find(b'{'):].decode('utf-8'))
+    return json.loads(open_file(path), encoding='utf-8')
 
 
 def save_data_json(path, data_json):
-    save_file(path, json.dumps(data_json, ensure_ascii=False, indent=True))
+    save_file(path, json.dumps(data_json, ensure_ascii=False, indent=2))
+
+
+def open_file(path):
+    with open(path, 'rb') as f: data = f.read()
+    if data.find(UTF8_BOM) == 0: data = data[3:]
+    return data.decode('utf-8')
 
 
 def save_file(path, data_str):
-    with open(path, 'wb') as f:
-        f.write(UTF8_BOM + data_str.encode('utf-8'))
+    with open(path, 'wb') as f: f.write(UTF8_BOM + data_str.encode('utf-8'))
 
 
-def merge_files(misc_path, main_path):
+def merge_files(args, misc_path, main_path):
     misc_json = open_data_json(misc_path)
     main_json = open_data_json(main_path)
-    misc_json['meta_keys'].extend(main_json['meta_keys'])
+    misc_json['poster'] = ''
     misc_json['albums'].extend(main_json['albums'])
-    misc_json['clips'].extend(main_json['clips'])
+    if len(main_json.get('clips', [])): misc_json['clips'].extend(main_json['clips'])
+    if len(main_json.get('meta_keys', [])): misc_json['meta_keys'].extend(main_json['meta_keys'])
     save_data_json(misc_path, misc_json)
-    os.remove(main_json)
+    save_update(args, main_json)
+    os.remove(main_path)
+    poster_path = os.path.join(args.work_dir, MISC, 'poster.jpg')
+    if os.path.isfile(poster_path): os.remove(poster_path)
     print('Merged data files: %s into %s' % (main_path, misc_path))
+
+
+def save_update(args, data_json):
+    update_path = os.path.join(args.work_dir, MISC, UPDATES, '%s.txt' % datetime.date.today().strftime('%y.%m.%d'))
+    update = ['[b]Добавлены альбомы:[/b]', '[list]']
+    update.extend(['[*]%s' % format_dir(album['dir']) for album, _ in albums_iterator(data_json['albums'])])
+    update.append('[/list]')
+    update = '\n'.join(update)
+    save_file(update_path, update)
 
 
 def albums_iterator(albums):
@@ -248,7 +263,6 @@ def process_multi_album(args, album, parent=None):
 
 
 def process_single_album(args, album):
-    # TODO check cover to poster
     if len(album.get('albums', [])) > 0:
         print('Processing multi-disc album %s of %d discs' % (album['dir'], len(album['albums'])))
         return '\n'.join([process_multi_album(args, child, album)
@@ -267,9 +281,7 @@ def format_dir(dir_name):
 
 
 def format_tracks(album):
-    track_list = '\n'.join([track_template % track for track in sorted(album['tracklist'], key=lambda k: k['num'])])
-    print('Formatted tracklist in album %s' % album['dir'])
-    return track_list
+    return '\n'.join([track_template % track for track in sorted(album['tracklist'], key=lambda k: k['num'])])
 
 
 def format_cover(cover):
@@ -404,9 +416,7 @@ def format_desc(args):
         else:
             return '[brc]'
     desc = ['']
-    with open(misc_path, encoding='utf-8') as f:
-        desc.extend(f.readlines())
-    desc.append('[brc]')
+    desc.extend(open_file(misc_path).split('\n'))
     return '\n'.join(desc)
 
 
@@ -415,14 +425,13 @@ def format_updates(args):
     updates_files = os.listdir(updates_dir)
     if len(updates_files) == 0:
         return ''
-    updates = ['\n[hr][spoiler=История обновлений]\n']
+    updates = ['\n[hr][spoiler=История обновлений]']
     for update_file in sorted(updates_files):
-        updates.append('[spoiler=%s]\n' % '.'.join(os.path.basename(update_file).split('.')[:-1]))
-        with open(os.path.join(updates_dir, update_file), encoding='utf-8') as f:
-            updates.extend(f.readlines())
-        updates.append('[/spoiler]\n')
-    updates.append('[/spoiler]\n')
-    return ''.join(updates)
+        updates.append('[spoiler=%s]' % '.'.join(os.path.basename(update_file).split('.')[:-1]))
+        updates.extend(open_file(os.path.join(updates_dir, update_file)).split('\n'))
+        updates.append('[/spoiler]')
+    updates.append('[/spoiler]')
+    return '\n'.join(updates)
 
 
 def format_footer(data_json):
@@ -480,9 +489,12 @@ def check_poster(args, data_json):
         return
     misc_path = os.path.join(args.work_dir, MISC, 'poster.jpg')
     if not os.path.isfile(misc_path):
-        main_path = os.path.join(args.work_dir, 'poster.jpg')
-        if os.path.isfile(main_path):
-            resize_image(main_path, misc_path, new_width=POSTER_WIDTH)
+        img_path = ''
+        for album, _ in albums_iterator(data_json['albums']):
+            cover_file = os.path.join(args.work_dir, album['dir'], 'cover.jpg')
+            if os.path.isfile(cover_file): img_path = cover_file
+        if img_path:
+            resize_image(img_path, misc_path, new_width=POSTER_WIDTH)
         else:
             data_json['poster'] = ''
             print('No poster found for data file %s ' % data_json['name'])
