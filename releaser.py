@@ -118,15 +118,13 @@ def main(args):
     clean_data_json(data_json)
     save_data_json(misc_path, data_json)
 
-    albums_str = format_albums(args, data_json)
+    check_resources(args, data_json)
     save_data_json(misc_path, data_json)
-
-    check_poster(args, data_json)
 
     code = [
         header_template % data_json,
         format_desc(args),
-        albums_str,
+        format_albums(args, data_json),
         format_updates(args),
         format_clips(args, data_json),
         format_footer(data_json)
@@ -216,6 +214,129 @@ def clean_images(data_json):
     print('Cleaned images in data file %s' % data_json['name'])
 
 
+def check_misc_dirs(args, data_json):
+    check_dir(os.path.join(args.work_dir, MISC))
+    check_dir(os.path.join(args.work_dir, MISC, UPDATES))
+    for album, parent in albums_iterator(data_json.get('albums', [])):
+        check_dir(get_misc_path(args, album, parent))
+    print('Checked misc directories')
+
+
+def check_dir(misc_dir):
+    if not os.path.isdir(misc_dir):
+        os.makedirs(misc_dir, exist_ok=True)
+
+
+def check_resources(args, data_json):
+    for album, parent in albums_iterator(data_json['albums']):
+        if not album.get('cover', ''):
+            album['cover'] = get_cover(args, album, parent)
+        if len(album.get('spectrograms')) == 0:
+            album['spectrograms'] = get_spectrograms(args, album, parent)
+        check_aucdtect_report(args, album, parent)
+    check_poster(args, data_json)
+    check_desc(args)
+
+
+def get_cover(args, album, parent=None):
+    print('Get cover for album %s' % album['dir'])
+    if parent:
+        cover = get_cover(args, parent)
+        if cover:
+            print('Got cover from parent album %s' % parent['dir'])
+            return cover
+    misc_path = os.path.join(get_misc_path(args, album, parent), 'cover.jpg')
+    if os.path.isfile(misc_path):
+        links = upload_image(misc_path)
+        print('Got cover from misc folder %s' % links['link'])
+        return links['link']
+    album_path = get_album_path(args, album, parent)
+    img_path = os.path.join(album_path, 'cover.jpg')
+    if os.path.isfile(img_path):
+        resize_image(img_path, misc_path)
+        links = upload_image(misc_path)
+        print('Got jpg cover from main folder %s' % links['link'])
+        return links['link']
+    img_path = os.path.join(album_path, 'cover.png')
+    if os.path.isfile(img_path):
+        resize_image(img_path, misc_path, convert=True)
+        links = upload_image(misc_path)
+        print('Got png cover from main folder %s' % links['link'])
+        return links['link']
+    print('Cover not found for album %s' % album['dir'])
+    return ''
+
+
+def get_spectrograms(args, album, parent=None):
+    print('Get spectrograms for album %s' % album['dir'])
+    misc_path = get_misc_path(args, album, parent)
+    files = find_spectrograms(misc_path, True)
+    if len(files) == 0:
+        main_path = get_album_path(args, album, parent)
+        main_files = find_spectrograms(main_path, False)
+        if len(main_files) == 0:
+            print('No spectrograms found for album %s' % album['dir'])
+            return []
+        else:
+            print('Found %d files for album %s' % (len(main_files), album['dir']))
+            for file in main_files:
+                misc_file = os.path.join(misc_path, file)
+                os.rename(os.path.join(main_path, file), misc_file)
+                files.append(misc_file)
+    spectrograms = list(map(lambda f: upload_image(f), files))
+    print('Got new spectrograms for album %s' % album['dir'])
+    return spectrograms
+
+
+def find_spectrograms(path, join):
+    result = list(map(lambda file: os.path.join(path, file) if join else file,
+                      filter(lambda file: file.endswith('.Spectrogram.png'), os.listdir(path))))
+    print('Found %d spectrograms in path %s' % (len(result), path))
+    return result
+
+
+def check_aucdtect_report(args, album, parent=None):
+    misc_path = os.path.join(get_misc_path(args, album, parent), REPO_NAME)
+    if not os.path.isfile(misc_path):
+        main_path = os.path.join(get_album_path(args, album, parent), REPO_NAME)
+        if os.path.isfile(main_path):
+            os.rename(main_path, misc_path)
+        else:
+            print('Check report not found for album %s' % album['dir'])
+
+
+def check_poster(args, data_json):
+    print('Get poster in data file %s' % data_json['name'])
+    if data_json['poster']:
+        print('Got saved poster in data file %s' % data_json['name'])
+        return
+    misc_path = os.path.join(args.work_dir, MISC, 'poster.jpg')
+    if not os.path.isfile(misc_path):
+        img_path = ''
+        for album, _ in albums_iterator(data_json['albums']):
+            cover_file = os.path.join(args.work_dir, album['dir'], 'cover.jpg')
+            if os.path.isfile(cover_file): img_path = cover_file
+        if img_path:
+            resize_image(img_path, misc_path, new_width=POSTER_WIDTH)
+        else:
+            data_json['poster'] = ''
+            print('No poster found for data file %s ' % data_json['name'])
+            return
+    links = upload_image(misc_path)
+    data_json['poster'] = links['link']
+    print('Found poster for data file %s' % data_json['name'])
+
+
+def check_desc(args):
+    misc_path = os.path.join(args.work_dir, MISC, DESC_NAME)
+    if not os.path.isfile(misc_path):
+        main_path = os.path.join(args.work_dir, DESC_NAME)
+        if os.path.isfile(main_path):
+            os.rename(main_path, misc_path)
+        else:
+            print('No description found for %s' % args.work_dir)
+
+
 def format_albums(args, data_json):
     print('Format albums from data file %s' % data_json['name'])
     meta_keys = sorted(data_json['meta_keys'], key=lambda k: k['id'])
@@ -257,7 +378,7 @@ def process_multi_album(args, album, parent=None):
         print('Processing single-disc album %s' % album['dir'])
         return multi_album_template % {
             'name': format_dir(album['dir']),
-            'cover': format_cover(get_cover(args, album, parent)),
+            'cover': format_cover(album['cover']),
             'tracklist': format_tracks(album),
             'time': album['total_time'],
             'reports': format_reports(args, album, parent)
@@ -290,41 +411,6 @@ def format_cover(cover):
     return '[img=right]%s[/img]' % cover if cover else ''
 
 
-def get_cover(args, album, parent=None):
-    print('Get cover for album %s' % album['dir'])
-    if parent:
-        cover = get_cover(args, parent)
-        if cover:
-            print('Got cover from parent album %s' % parent['dir'])
-            return cover
-    if album.get('cover', ''):
-        print('Got saved cover %s' % album['cover'])
-        return album['cover']
-    misc_path = os.path.join(get_misc_path(args, album, parent), 'cover.jpg')
-    if os.path.isfile(misc_path):
-        links = upload_image(misc_path)
-        album['cover'] = links['link']
-        print('Got cover from misc folder %s' % album['cover'])
-        return album['cover']
-    album_path = get_album_path(args, album, parent)
-    img_path = os.path.join(album_path, 'cover.jpg')
-    if os.path.isfile(img_path):
-        resize_image(img_path, misc_path)
-        links = upload_image(misc_path)
-        album['cover'] = links['link']
-        print('Got jpg cover from main folder %s' % album['cover'])
-        return album['cover']
-    img_path = os.path.join(album_path, 'cover.png')
-    if os.path.isfile(img_path):
-        resize_image(img_path, misc_path, convert=True)
-        links = upload_image(misc_path)
-        album['cover'] = links['link']
-        print('Got png cover from main folder %s' % album['cover'])
-        return album['cover']
-    print('Cover not found for album %s' % album['dir'])
-    return ''
-
-
 def format_reports(args, album, parent=None):
     print('Format reports for album %s' % album['dir'])
     reports = ['']
@@ -334,11 +420,11 @@ def format_reports(args, album, parent=None):
         reports.extend(aucdtect)
         reports.append('[/pre][/spoiler]')
         print('Formatted check report for album %s' % album['dir'])
-    specs = get_spectrograms(args, album, parent)
+    specs = album['spectrograms']
     if len(specs) > 0:
+        if args.limit_specs: specs = specs[:SPECS_LIMIT]
         reports.append('[spoiler=Спектрограммы]')
-        reports.append(''.join([spectrogram_template % specs[i]
-                                for i in range(0, (SPECS_LIMIT if args.limit_specs else len(specs)))]))
+        reports.append(''.join([spectrogram_template % spec for spec in specs]))
         reports.append('[/spoiler]')
         print('Formatted spectrograms for album %s' % album['dir'])
     return '\n'.join(reports)
@@ -346,13 +432,7 @@ def format_reports(args, album, parent=None):
 
 def get_aucdtect_report(args, album, parent=None):
     misc_path = os.path.join(get_misc_path(args, album, parent), REPO_NAME)
-    if not os.path.isfile(misc_path):
-        main_path = os.path.join(get_album_path(args, album, parent), REPO_NAME)
-        if os.path.isfile(main_path):
-            os.rename(main_path, misc_path)
-        else:
-            print('Check report not found for album %s' % album['dir'])
-            return []
+    if not os.path.isfile(misc_path): return []
     print('Found check %s report for album %s' % (misc_path, album['dir']))
     with open(misc_path, 'rb') as f:
         data = f.read()
@@ -370,37 +450,6 @@ def get_aucdtect_report(args, album, parent=None):
         return result
 
 
-def get_spectrograms(args, album, parent=None):
-    print('Get spectrograms for album %s' % album['dir'])
-    if len(album['spectrograms']) > 0:
-        print('Got saved spectrograms for album %s' % album['dir'])
-        return album['spectrograms']
-    misc_path = get_misc_path(args, album, parent)
-    files = find_spectrograms(misc_path, True)
-    if len(files) == 0:
-        main_path = get_album_path(args, album, parent)
-        main_files = find_spectrograms(main_path, False)
-        if len(main_files) == 0:
-            print('No spectrograms found for album %s' % album['dir'])
-            return []
-        else:
-            print('Found %d files for album %s' % (len(main_files), album['dir']))
-            for file in main_files:
-                misc_file = os.path.join(misc_path, file)
-                os.rename(os.path.join(main_path, file), misc_file)
-                files.append(misc_file)
-    album['spectrograms'] = list(map(lambda f: upload_image(f), files))
-    print('Got new spectrograms for album %s' % album['dir'])
-    return album['spectrograms']
-
-
-def find_spectrograms(path, join):
-    result = list(map(lambda file: os.path.join(path, file) if join else file,
-                      filter(lambda file: file.endswith('.Spectrogram.png'), os.listdir(path))))
-    print('Found %d spectrograms in path %s' % (len(result), path))
-    return result
-
-
 def format_clips(args, data_json):
     if len(data_json.get('clips', [])) == 0:
         return ''
@@ -411,12 +460,7 @@ def format_clips(args, data_json):
 
 def format_desc(args):
     misc_path = os.path.join(args.work_dir, MISC, DESC_NAME)
-    if not os.path.isfile(misc_path):
-        main_path = os.path.join(args.work_dir, DESC_NAME)
-        if os.path.isfile(main_path):
-            os.rename(main_path, misc_path)
-        else:
-            return '[brc]'
+    if not os.path.isfile(misc_path): return '[brc]'
     desc = ['']
     desc.extend(open_file(misc_path).split('\n'))
     return '\n'.join(desc)
@@ -469,41 +513,6 @@ def get_misc_path(args, album, parent=None):
         album_path.append(parent['dir'])
     album_path.append(album['dir'])
     return os.path.join(*album_path)
-
-
-def check_misc_dirs(args, data_json):
-    check_dir(os.path.join(args.work_dir, MISC))
-    check_dir(os.path.join(args.work_dir, MISC, UPDATES))
-    for album, parent in albums_iterator(data_json.get('albums', [])):
-        check_dir(get_misc_path(args, album, parent))
-    print('Checked misc directories')
-
-
-def check_dir(misc_dir):
-    if not os.path.isdir(misc_dir):
-        os.makedirs(misc_dir, exist_ok=True)
-
-
-def check_poster(args, data_json):
-    print('Get poster in data file %s' % data_json['name'])
-    if data_json['poster']:
-        print('Got saved poster in data file %s' % data_json['name'])
-        return
-    misc_path = os.path.join(args.work_dir, MISC, 'poster.jpg')
-    if not os.path.isfile(misc_path):
-        img_path = ''
-        for album, _ in albums_iterator(data_json['albums']):
-            cover_file = os.path.join(args.work_dir, album['dir'], 'cover.jpg')
-            if os.path.isfile(cover_file): img_path = cover_file
-        if img_path:
-            resize_image(img_path, misc_path, new_width=POSTER_WIDTH)
-        else:
-            data_json['poster'] = ''
-            print('No poster found for data file %s ' % data_json['name'])
-            return
-    links = upload_image(misc_path)
-    data_json['poster'] = links['link']
-    print('Found poster for data file %s' % data_json['name'])
 
 
 def resize_image(img_path, misc_path, new_width=COVER_WIDTH, convert=False):
@@ -559,6 +568,7 @@ def upload_image(img_path):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Music release helper')
+    parser.add_argument('--multi_mode', required=False, action='store_true')
     parser.add_argument('--clean_images', required=False, action='store_true')
     parser.add_argument('--named_clips', required=False, action='store_true')
     parser.add_argument('--limit_specs', required=False, action='store_true')
