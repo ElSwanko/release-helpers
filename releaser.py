@@ -162,8 +162,10 @@ def merge_files(args, misc_path, main_path):
     main_json = open_data_json(main_path)
     misc_json['poster'] = ''
     misc_json['albums'].extend(main_json['albums'])
-    if len(main_json.get('clips', [])): misc_json['clips'].extend(main_json['clips'])
-    if len(main_json.get('meta_keys', [])): misc_json['meta_keys'].extend(main_json['meta_keys'])
+    clips = list(filter(lambda c: len(c['url']) > 0, main_json['clips']))
+    if len(clips) > 0: misc_json['clips'].extend(clips)
+    meta_keys = list(filter(lambda k: k['id'] > 1, main_json['meta_keys']))
+    if len(meta_keys) > 0: misc_json['meta_keys'].extend(meta_keys)
     save_data_json(misc_path, misc_json)
     save_update(args, main_json)
     os.remove(main_path)
