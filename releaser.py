@@ -140,24 +140,6 @@ def main(args):
     print('Complete bb-code to %s' % code_path)
 
 
-def open_data_json(path):
-    return json.loads(open_file(path), encoding='utf-8')
-
-
-def save_data_json(path, data_json):
-    save_file(path, json.dumps(data_json, ensure_ascii=False, indent=2))
-
-
-def open_file(path):
-    with open(path, 'rb') as f: data = f.read()
-    if data.find(UTF8_BOM) == 0: data = data[3:]
-    return data.decode('utf-8')
-
-
-def save_file(path, data_str):
-    with open(path, 'wb') as f: f.write(UTF8_BOM + data_str.encode('utf-8'))
-
-
 def merge_files(args, misc_path, main_path):
     misc_json = open_data_json(misc_path)
     main_json = open_data_json(main_path)
@@ -181,15 +163,6 @@ def save_update(args, data_json):
     update.append('[/list]')
     update = '\n'.join(update)
     save_file(update_path, update)
-
-
-def albums_iterator(albums):
-    for album in albums:
-        if len(album.get('albums', [])) > 0:
-            for child in album['albums']:
-                yield child, album
-        else:
-            yield album, None
 
 
 def clean_data_json(data_json):
@@ -485,7 +458,7 @@ def format_clips(args, data_json):
 
 def format_desc(args):
     misc_path = os.path.join(args.work_dir, MISC, DESC_NAME)
-    if not os.path.isfile(misc_path): return '[brc]'
+    if not os.path.isfile(misc_path): return ''
     desc = ['']
     desc.extend(open_file(misc_path).split('\n'))
     return '\n'.join(desc)
@@ -529,6 +502,15 @@ def format_time(time):
     return ":".join(["%02d" % (int(float(x))) for x in time_str.split(':')])
 
 
+def albums_iterator(albums):
+    for album in albums:
+        if len(album.get('albums', [])) > 0:
+            for child in album['albums']:
+                yield child, album
+        else:
+            yield album, None
+
+
 def get_album_path(args, album, parent=None):
     album_path = [args.work_dir]
     if parent:
@@ -543,6 +525,24 @@ def get_misc_path(args, album, parent=None):
         album_path.append(parent['dir'])
     album_path.append(album['dir'])
     return os.path.join(*album_path)
+
+
+def open_data_json(path):
+    return json.loads(open_file(path), encoding='utf-8')
+
+
+def save_data_json(path, data_json):
+    save_file(path, json.dumps(data_json, ensure_ascii=False, indent=2))
+
+
+def open_file(path):
+    with open(path, 'rb') as f: data = f.read()
+    if data.find(UTF8_BOM) == 0: data = data[3:]
+    return data.decode('utf-8')
+
+
+def save_file(path, data_str):
+    with open(path, 'wb') as f: f.write(UTF8_BOM + data_str.encode('utf-8'))
 
 
 def resize_image(img_path, misc_path, new_width=COVER_WIDTH, convert=False):
