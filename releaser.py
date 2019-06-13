@@ -134,9 +134,61 @@ def main(args):
     ]
 
     code_path = os.path.join(args.work_dir, MISC, data_json['name'] + '.txt')
-    if os.path.isfile(code_path): os.remove(code_path)
     save_file(code_path, ''.join(code))
     save_data_json(misc_path, data_json)
+    print('Complete bb-code to %s' % code_path)
+
+
+def multi(args):
+    print('Processing directory %s' % args.work_dir)
+
+    work_dir = args.work_dir
+    base_name = os.path.basename(args.work_dir) + '.json'
+    misc_path = os.path.join(args.work_dir, MISC, base_name)
+
+    if not os.path.isfile(misc_path):
+        print('Data file not found in %s ' % misc_path)
+        return
+
+    data_json = open_data_json(misc_path)
+
+    albums = []
+    artists = []
+    albums_strs = []
+    total_times = datetime.timedelta()
+    total_count = 0
+    for key in sorted(data_json['meta_keys'], key=lambda k: k['id']):
+        multi_dir = filter_albums(data_json['albums'], key['id'])[0]['dir']
+
+        args.work_dir = os.path.join(args.work_dir, multi_dir)
+        sub_name = os.path.basename(args.work_dir) + '.json'
+        sub_json = open_data_json(os.path.join(args.work_dir, MISC, sub_name))
+
+        albums.extend(sub_json['albums'])
+        artists.extend(sub_json['artists'].split(', '))
+        albums_strs.append((hide_meta_template if args.hide_meta else show_meta_template) % {
+            'albums_str': format_albums(args, sub_json), 'meta_key': key['name']
+        })
+        total_times += get_total_time(sub_json['albums'])
+        total_count += sub_json['count']
+
+        args.work_dir = work_dir
+
+    data_json['artists'] = ', '.join(sorted(list(set(artists))))
+    data_json['albums'] = sorted(albums, key=lambda k: k['dir'])
+    data_json['count'] = total_count
+
+    code = [
+        header_template % data_json,
+        format_desc(args),
+        '\n'.join(albums_strs),
+        format_updates(args),
+        format_clips(args, data_json),
+        format_footer(data_json, total_times)
+    ]
+
+    code_path = os.path.join(args.work_dir, MISC, data_json['name'] + '.txt')
+    save_file(code_path, ''.join(code))
     print('Complete bb-code to %s' % code_path)
 
 
@@ -478,18 +530,22 @@ def format_updates(args):
     return '\n'.join(updates)
 
 
-def format_footer(data_json):
+def format_footer(data_json, total_time=None):
     header_str = header_str_template % data_json
     albums = data_json['albums']
-    total_time = datetime.timedelta()
-    for album, _ in albums_iterator(albums):
-        total_time += parse_time(album['total_time'])
     albums_str = '\n'.join([format_dir(album['dir']) for album in albums[-3:]])
     return footer_template % {
         'header_str': header_str,
-        'total_time': format_time(total_time),
+        'total_time': format_time(total_time if total_time else get_total_time(albums)),
         'albums_str': albums_str
     }
+
+
+def get_total_time(albums):
+    total_time = datetime.timedelta()
+    for album, _ in albums_iterator(albums):
+        total_time += parse_time(album['total_time'])
+    return total_time
 
 
 def parse_time(time):
@@ -560,12 +616,12 @@ def resize_image(img_path, misc_path, new_width=COVER_WIDTH, convert=False):
     print('Resized cover in path %s' % misc_path)
 
 
-def _upload_image(img_path):
+def upload_image(img_path):
     print('Uploaded image in path %s' % img_path)
     return {'link': img_path, 'thumb': img_path}
 
 
-def upload_image(img_path):
+def _upload_image(img_path):
     print('Uploading image in path %s' % img_path)
     with open(img_path, 'rb') as f:
         img = f.read()
@@ -607,4 +663,4 @@ if __name__ == '__main__':
     parser.add_argument('work_dir', type=str)
     arguments = parser.parse_args()
     print(arguments.work_dir)
-    main(arguments)
+    main(arguments) if not arguments.multi_mode else multi(arguments)
