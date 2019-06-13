@@ -173,9 +173,10 @@ def merge_files(args, misc_path, main_path):
 
 
 def save_update(args, data_json):
-    update_path = os.path.join(args.work_dir, MISC, UPDATES, '%s.txt' % datetime.date.today().strftime('%y.%m.%d'))
+    update_path = os.path.join(args.work_dir, MISC, UPDATES, '%s.txt' % datetime.date.today().strftime('%Y.%m.%d'))
     update = ['[b]Добавлены альбомы:[/b]', '[list]']
-    update.extend(['[*]%s' % format_dir(album['dir']) for album, _ in albums_iterator(data_json['albums'])])
+    update.extend(['[*]%s' % format_dir(album['dir'])
+                   for album in filter(lambda a: len(a['dir']) > 0, data_json['albums'])])
     update.append('[/list]')
     update = '\n'.join(update)
     save_file(update_path, update)
@@ -241,10 +242,12 @@ def check_resources(args, data_json):
 def get_cover(args, album, parent=None):
     print('Get cover for album %s' % album['dir'])
     if parent:
-        cover = get_cover(args, parent)
-        if cover:
+        if not parent.get('cover', ''):
+            parent['cover'] = get_cover(args, parent)
+            print('Got new cover for parent album %s' % parent['dir'])
+        if parent['cover']:
             print('Got cover from parent album %s' % parent['dir'])
-            return cover
+            return parent['cover']
     misc_path = os.path.join(get_misc_path(args, album, parent), 'cover.jpg')
     if os.path.isfile(misc_path):
         links = upload_image(misc_path)
@@ -313,7 +316,7 @@ def check_poster(args, data_json):
     misc_path = os.path.join(args.work_dir, MISC, 'poster.jpg')
     if not os.path.isfile(misc_path):
         img_path = ''
-        for album, _ in albums_iterator(data_json['albums']):
+        for album in data_json['albums']:
             cover_file = os.path.join(args.work_dir, album['dir'], 'cover.jpg')
             if os.path.isfile(cover_file): img_path = cover_file
         if img_path:
@@ -486,7 +489,7 @@ def format_footer(data_json):
     total_time = datetime.timedelta()
     for album, _ in albums_iterator(albums):
         total_time += parse_time(album['total_time'])
-    albums_str = '\n'.join([format_dir(album['dir']) for album in albums[-4:]])
+    albums_str = '\n'.join([format_dir(album['dir']) for album in albums[-3:]])
     return footer_template % {
         'header_str': header_str,
         'total_time': total_time,
@@ -517,7 +520,7 @@ def get_misc_path(args, album, parent=None):
 
 def resize_image(img_path, misc_path, new_width=COVER_WIDTH, convert=False):
     img = Image.open(img_path)
-    if img.size[0] >= img.size[1]:
+    if img.size[0] < img.size[1]:
         new_size = (new_width, int(img.size[1] * (new_width / img.size[0])))
     else:
         new_size = (int(img.size[0] * (new_width / img.size[1])), new_width)
