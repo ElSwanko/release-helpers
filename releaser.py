@@ -167,8 +167,6 @@ def merge_files(args, misc_path, main_path):
     save_data_json(misc_path, misc_json)
     save_update(args, main_json)
     os.remove(main_path)
-    poster_path = os.path.join(args.work_dir, MISC, 'poster.jpg')
-    if os.path.isfile(poster_path): os.remove(poster_path)
     print('Merged data files: %s into %s' % (main_path, misc_path))
 
 
@@ -315,16 +313,21 @@ def check_poster(args, data_json):
         return
     misc_path = os.path.join(args.work_dir, MISC, 'poster.jpg')
     if not os.path.isfile(misc_path):
-        img_path = ''
-        for album in data_json['albums']:
-            cover_file = os.path.join(args.work_dir, album['dir'], 'cover.jpg')
-            if os.path.isfile(cover_file): img_path = cover_file
-        if img_path:
-            resize_image(img_path, misc_path, new_width=POSTER_WIDTH)
+        poster_path = os.path.join(args.work_dir, 'poster.jpg')
+        if os.path.isfile(poster_path):
+            resize_image(poster_path, misc_path, new_width=POSTER_WIDTH)
+            os.remove(poster_path)
         else:
-            data_json['poster'] = ''
-            print('No poster found for data file %s ' % data_json['name'])
-            return
+            cover_path = ''
+            for album in data_json['albums']:
+                cover_file = os.path.join(args.work_dir, album['dir'], 'cover.jpg')
+                if os.path.isfile(cover_file): cover_path = cover_file
+            if cover_path:
+                resize_image(cover_path, misc_path, new_width=POSTER_WIDTH)
+            else:
+                data_json['poster'] = ''
+                print('No poster found for data file %s ' % data_json['name'])
+                return
     links = upload_image(misc_path)
     data_json['poster'] = links['link']
     print('Found poster for data file %s' % data_json['name'])
