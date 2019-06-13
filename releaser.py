@@ -28,6 +28,7 @@ header_str_template = '''
 
 single_album_template = '''
 [b]Треклист:[/b]
+
 %(tracklist)s
 
 [b]Продолжительность:[/b] %(time)s
@@ -78,6 +79,7 @@ API_AUTH = {
 }
 API_TIMEOUT = 30
 API_RETRIES = 5
+SEP = '[,\\/:|&]'
 
 MISC = '_misc_'
 UPDATES = '_updates_'
@@ -88,6 +90,7 @@ import base64
 import datetime
 import json
 import os
+import re
 
 import requests
 from PIL import Image, ImageFile
@@ -191,7 +194,19 @@ def albums_iterator(albums):
 
 def clean_data_json(data_json):
     albums = list(filter(lambda a: len(a['dir']) > 0, data_json['albums']))
-    for album, _ in albums_iterator(albums): clean_tracklist(album)
+    albums_dict = {}
+    for album in albums:
+        _album = albums_dict.get(album['dir'], None)
+        if _album:
+            if len(_album.get('albums', [])) > 0 and len(album.get('albums', [])) > 0:
+                _album['albums'] = sorted(_album['albums'] + album['albums'], key=lambda k: k['dir'])
+        else:
+            albums_dict[album['dir']] = album
+    albums = albums_dict.values()
+    artists = []
+    for album, _ in albums_iterator(albums):
+        artists += clean_tracklist(album)
+    data_json['artists'] = ', '.join(sorted(list(set(artists))))
     data_json['meta_keys'] = sorted(data_json['meta_keys'], key=lambda k: k['id'])
     data_json['albums'] = sorted(albums, key=lambda k: k['dir'])
     data_json['count'] = len(albums)
@@ -203,6 +218,10 @@ def clean_tracklist(album):
     tracklist = filter(lambda track: track['num'] != '00', album['tracklist'])
     album['tracklist'] = sorted(tracklist, key=lambda k: k['num'])
     print('Cleaned up tracklist in album %s' % album['dir'])
+    artists = []
+    for tr in album['tracklist']:
+        artists += re.split(SEP, tr['artist'])
+    return [a.strip() for a in set(artists)]
 
 
 def clean_images(data_json):
@@ -495,7 +514,7 @@ def format_footer(data_json):
     albums_str = '\n'.join([format_dir(album['dir']) for album in albums[-3:]])
     return footer_template % {
         'header_str': header_str,
-        'total_time': total_time,
+        'total_time': format_time(total_time),
         'albums_str': albums_str
     }
 
@@ -503,6 +522,11 @@ def format_footer(data_json):
 def parse_time(time):
     h, m, s = map(int, time.split(':'))
     return datetime.timedelta(hours=h, minutes=m, seconds=s)
+
+
+def format_time(time):
+    time_str = re.sub(' day[s]?, ', ':', str(time)) if time.days > 0 else "0:" + str(time)
+    return ":".join(["%02d" % (int(float(x))) for x in time_str.split(':')])
 
 
 def get_album_path(args, album, parent=None):

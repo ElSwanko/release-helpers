@@ -1,5 +1,5 @@
 ﻿$filename(%_workingdir%.json, UTF-8)'{"work_dir": "'%_workingdir%'",
-"name": "'$replace(%_workingdir%,'[',' ',']',' ')'",
+"name": "'$trim($replace(%_workingdir%,'[',' ',']',' '))'",
 "dates": "2010-2020",
 "poster": "",
 "country": "Япония",
@@ -7,22 +7,27 @@
 "format": "Touhou Vocal, Instrumental",
 "vgmdb_link": "https://vgmdb.net/org/1004",
 "release": "Doujin",
-"artists": "'%artist%'",
+"artists": "",
 "codec": "FLAC",
-"bitrate": "Lossless|WEB-DL",
+"bitrate": "Lossless",
 "rip_type": "tracks",
-"clips": [{"url": "", "name": ""}],
+"clips": [
+{"url": "", "name": ""}
+],
 "meta_keys": [{"id": 1, "name": "Default"}],
-"albums": ['$loop(%_folderpath%,1)'
+"albums": ['$loop(%_folderpath%,1)$if($strcmp(%_workingdir%,%_parent_directory%),' ','
+    {"dir": "'%_parent_directory%'",
+    "meta_key": 1,
+    "albums": [')'
     {"dir": "'%_directory%'",
     "meta_key": 1,
     "cover": "",
     "spectrograms": [],
     "tracklist": ['$loop(%_path%)'
-        {"num": "'$num(%_counter%,2)'", "artist": "'%artist%'", "title": "'%title%'", "time": "'%_length%'"},'$loopend()'
+        {"num": "'$num(%_counter%,2)'", "artist": "'$replace(%artist%, '"', '''')'", "title": "'$replace(%title%, '"', '''')'", "time": "'%_length%'"},'$loopend()'
         {"num": "00"}
     ],
-    "total_time": "'%_total_time%'"
+    "total_time": "'%_total_time%'"'$if($strcmp(%_workingdir%,%_parent_directory%),' ','}]')'
     },'$loopend()'
     {"dir": "", "meta_key": 1}
 ]}'
