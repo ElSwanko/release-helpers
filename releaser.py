@@ -533,6 +533,8 @@ def format_updates(args):
 def format_footer(data_json, total_time=None):
     header_str = header_str_template % data_json
     albums = data_json['albums']
+    if len(albums) == 1 and len(albums.get('albums', [])) == 0:
+        return header_str
     albums_str = '\n'.join([format_dir(album['dir']) for album in albums[-3:]])
     return footer_template % {
         'header_str': header_str,
@@ -617,12 +619,10 @@ def resize_image(img_path, misc_path, new_width=COVER_WIDTH, convert=False):
 
 
 def upload_image(img_path):
-    print('Uploaded image in path %s' % img_path)
-    return {'link': img_path, 'thumb': img_path}
-
-
-def _upload_image(img_path):
     print('Uploading image in path %s' % img_path)
+    if os.environ.get('SKIP_IMG_UPLOAD', ''):
+        return {'link': img_path, 'thumb': img_path}
+
     with open(img_path, 'rb') as f:
         img = f.read()
 
