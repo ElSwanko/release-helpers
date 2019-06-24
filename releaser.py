@@ -70,7 +70,7 @@ named_clips_template = '''
 
 SPECS_LIMIT = 3
 COVER_WIDTH = 400
-POSTER_WIDTH = 500
+POSTER_WIDTH = 450
 DESC_NAME = 'desc.txt'
 REPO_NAME = 'Folder.auCDtect.txt'
 API_AUTH = {
@@ -79,7 +79,7 @@ API_AUTH = {
 }
 API_TIMEOUT = 30
 API_RETRIES = 5
-SEP = '[,\\/:|&]'
+SEP = '[,\\/:\\|\\&、＆]'
 
 MISC = '_misc_'
 UPDATES = '_updates_'
@@ -210,8 +210,8 @@ def merge_files(args, misc_path, main_path):
 def save_update(args, data_json):
     update_path = os.path.join(args.work_dir, MISC, UPDATES, '%s.txt' % datetime.date.today().strftime('%Y.%m.%d'))
     update = ['[b]Добавлены альбомы:[/b]', '[list]']
-    update.extend(['[*]%s' % format_dir(album['dir'])
-                   for album in filter(lambda a: len(a['dir']) > 0, data_json['albums'])])
+    update.extend(sorted(set(['[*]%s' % format_dir(a['dir']) for a in
+                              filter(lambda a: len(a['dir']) > 0, data_json['albums'])])))
     update.append('[/list]')
     update = '\n'.join(update)
     save_file(update_path, update)
@@ -533,7 +533,7 @@ def format_updates(args):
 def format_footer(data_json, total_time=None):
     header_str = header_str_template % data_json
     albums = data_json['albums']
-    if len(albums) == 1 and len(albums.get('albums', [])) == 0:
+    if len(albums) == 1 and len(albums[0].get('albums', [])) == 0:
         return header_str
     albums_str = '\n'.join([format_dir(album['dir']) for album in albums[-3:]])
     return footer_template % {
