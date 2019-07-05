@@ -7,11 +7,11 @@ header_template = '''
 [b]Жанр:[/b] %(genres)s
 [b]Формат:[/b] %(format)s
 [b]Тип издания:[/b] [url=%(vgmdb_link)s]%(release)s[/url]
-[b]Исполнители:[/b] %(artists)s
 
 [b]Кодек:[/b] %(codec)s
 [b]Битрейт:[/b] %(bitrate)s
 [b]Тип рипа:[/b] %(rip_type)s
+
 '''
 
 footer_template = '''
@@ -72,6 +72,7 @@ SPECS_LIMIT = 3
 COVER_WIDTH = 400
 POSTER_WIDTH = 450
 DESC_NAME = 'desc.txt'
+ARTISTS_NAME = 'artists.txt'
 REPO_NAME = 'Folder.auCDtect.txt'
 API_AUTH = {
     'token': 'dL6fE5q5GQzEIq5cQi4f',
@@ -126,7 +127,8 @@ def main(args):
 
     code = [
         header_template % data_json,
-        format_desc(args),
+        format_artists(args, data_json),
+        format_ext_resource(args, DESC_NAME),
         format_albums(args, data_json),
         format_updates(args),
         format_clips(args, data_json),
@@ -180,7 +182,8 @@ def multi(args):
 
     code = [
         header_template % data_json,
-        format_desc(args),
+        format_artists(args, data_json),
+        format_ext_resource(args, DESC_NAME),
         '\n'.join(albums_strs),
         format_updates(args),
         format_clips(args, data_json),
@@ -271,14 +274,16 @@ def check_dir(misc_dir):
 
 
 def check_resources(args, data_json):
-    for album, parent in albums_iterator(data_json['albums']):
-        if not album.get('cover', ''):
-            album['cover'] = get_cover(args, album, parent)
-        if len(album.get('spectrograms')) == 0:
-            album['spectrograms'] = get_spectrograms(args, album, parent)
-        check_aucdtect_report(args, album, parent)
-    check_poster(args, data_json)
-    check_desc(args)
+    if not args.skip_images:
+        for album, parent in albums_iterator(data_json['albums']):
+            if not album.get('cover', ''):
+                album['cover'] = get_cover(args, album, parent)
+            if len(album.get('spectrograms')) == 0:
+                album['spectrograms'] = get_spectrograms(args, album, parent)
+            check_aucdtect_report(args, album, parent)
+        check_poster(args, data_json)
+    check_ext_resource(args, ARTISTS_NAME)
+    check_ext_resource(args, DESC_NAME)
 
 
 def get_cover(args, album, parent=None):
@@ -377,14 +382,14 @@ def check_poster(args, data_json):
     print('Found poster for data file %s' % data_json['name'])
 
 
-def check_desc(args):
-    misc_path = os.path.join(args.work_dir, MISC, DESC_NAME)
+def check_ext_resource(args, resource):
+    misc_path = os.path.join(args.work_dir, MISC, resource)
     if not os.path.isfile(misc_path):
-        main_path = os.path.join(args.work_dir, DESC_NAME)
+        main_path = os.path.join(args.work_dir, resource)
         if os.path.isfile(main_path):
             os.rename(main_path, misc_path)
         else:
-            print('No description found for %s' % args.work_dir)
+            print('No external resource (%s) found for %s' % (resource, args.work_dir))
 
 
 def format_albums(args, data_json):
@@ -470,7 +475,7 @@ def format_reports(args, album, parent=None):
         reports.extend(aucdtect)
         reports.append('[/pre][/spoiler]')
         print('Formatted check report for album %s' % album['dir'])
-    specs = album['spectrograms']
+    specs = album.get('spectrograms', [])
     if len(specs) > 0:
         if args.limit_specs: specs = specs[:SPECS_LIMIT]
         reports.append('[spoiler=Спектрограммы]')
@@ -508,8 +513,14 @@ def format_clips(args, data_json):
     return (named_clips_template if args.named_clips else preview_clips_template) % clips_str
 
 
-def format_desc(args):
-    misc_path = os.path.join(args.work_dir, MISC, DESC_NAME)
+def format_artists(args, data_json):
+    misc_path = os.path.join(args.work_dir, MISC, ARTISTS_NAME)
+    return '[b]Исполнители:[/b] %s' % (format_ext_resource(args, ARTISTS_NAME)
+                                       if os.path.isfile(misc_path) else data_json['artists'])
+
+
+def format_ext_resource(args, resource):
+    misc_path = os.path.join(args.work_dir, MISC, resource)
     if not os.path.isfile(misc_path): return ''
     desc = ['']
     desc.extend(open_file(misc_path).split('\n'))
@@ -620,9 +631,6 @@ def resize_image(img_path, misc_path, new_width=COVER_WIDTH, convert=False):
 
 def upload_image(img_path):
     print('Uploading image in path %s' % img_path)
-    if os.environ.get('SKIP_IMG_UPLOAD', ''):
-        return {'link': img_path, 'thumb': img_path}
-
     with open(img_path, 'rb') as f:
         img = f.read()
 
@@ -662,5 +670,6 @@ if __name__ == '__main__':
     parser.add_argument('--hide_meta', required=False, action='store_true')
     parser.add_argument('work_dir', type=str)
     arguments = parser.parse_args()
-    print(arguments.work_dir)
+    arguments.skip_images = os.path.isfile(os.path.join(arguments.work_dir, 'skip_images'))
+    print(arguments)
     main(arguments) if not arguments.multi_mode else multi(arguments)
