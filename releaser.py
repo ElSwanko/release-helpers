@@ -106,6 +106,12 @@ def main(args):
     main_path = os.path.join(args.work_dir, base_name)
     misc_path = os.path.join(args.work_dir, MISC, base_name)
 
+    update_name = base_name + '.update'
+    update_path = os.path.join(args.work_dir, update_name)
+    if os.path.isfile(update_path) and os.path.isfile(misc_path):
+        update_files(misc_path, update_path)
+        return
+
     if os.path.isfile(misc_path) and os.path.isfile(main_path):
         merge_files(args, misc_path, main_path)
     elif os.path.isfile(main_path):
@@ -196,6 +202,31 @@ def multi(args):
     print('Complete bb-code to %s' % code_path)
 
 
+def update_files(misc_path, update_path):
+    misc_json = open_data_json(misc_path)
+    albums = {album['dir']: album for album, _ in albums_iterator(misc_json['albums'])}
+    update_json = open_data_json(update_path)
+    clean_data_json(update_json)
+    print('Update all albums in %s' % misc_path)
+    for _album, _ in albums_iterator(update_json['albums']):
+        album = albums.get(_album['dir'], None)
+        if album:
+            album['meta_key'] = _album['meta_key']
+            album['tracklist'] = _album['tracklist']
+            album['total_time'] = _album['total_time']
+    print('Update parent albums in %s' % misc_path)
+    albums = misc_json['albums']
+    albums_ = update_json['albums']
+    for i in range(0, len(albums)):
+        album = albums[i]
+        album_ = albums_[i]
+        if album_.get('type', ''):
+            album['type'] = album_['type']
+    save_data_json(misc_path, misc_json)
+    os.remove(update_path)
+    print('Updated data file %s by %s' % (misc_path, update_path))
+
+
 def merge_files(args, misc_path, main_path):
     misc_json = open_data_json(misc_path)
     main_json = open_data_json(main_path)
@@ -213,12 +244,12 @@ def merge_files(args, misc_path, main_path):
 
 def save_update(args, data_json):
     update_path = os.path.join(args.work_dir, MISC, UPDATES, '%s.txt' % datetime.date.today().strftime('%Y.%m.%d'))
-    update = ['[b]Добавлены альбомы:[/b]', '[list]']
-    update.extend(sorted(set(['[*]%s' % format_dir(a['dir']) for a in
+    updates = ['[b]Добавлены альбомы:[/b]', '[list]']
+    updates.extend(sorted(set(['[*]%s' % format_dir(a['dir']) for a in
                               filter(lambda a: len(a['dir']) > 0, data_json['albums'])])))
-    update.append('[/list]')
-    update = '\n'.join(update)
-    save_file(update_path, update)
+    updates.append('[/list]')
+    updates = '\n'.join(updates)
+    save_file(update_path, updates)
 
 
 def clean_data_json(data_json):
