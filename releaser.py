@@ -74,6 +74,7 @@ POSTER_WIDTH = 450
 DESC_NAME = 'desc.txt'
 ARTISTS_NAME = 'artists.txt'
 REPO_NAME = 'Folder.auCDtect.txt'
+REPO_EXTS = ['log', 'cue', 'accurip']
 API_AUTH = {
     'token': 'dL6fE5q5GQzEIq5cQi4f',
     'secret_key': 'wXvMKwjoPVjnlppr9LtsIwyU1QgvHLzP5RO'
@@ -281,6 +282,7 @@ def check_resources(args, data_json):
             if len(album.get('spectrograms')) == 0:
                 album['spectrograms'] = get_spectrograms(args, album, parent)
             check_aucdtect_report(args, album, parent)
+            check_ext_resource(args, album, parent)
         check_poster(args, data_json)
     check_ext_resource(args, ARTISTS_NAME)
     check_ext_resource(args, DESC_NAME)
@@ -353,6 +355,15 @@ def check_aucdtect_report(args, album, parent=None):
             os.rename(main_path, misc_path)
         else:
             print('Check report not found for album %s' % album['dir'])
+
+
+def check_other_reports(args, album, parent=None):
+    for ext in REPO_EXTS:
+        album_path = get_album_path(args, album, parent)
+        misc_path = get_misc_path(args, album, parent)
+        for file in os.listdir(album_path):
+            if os.path.isfile(file) and file.endswith(ext):
+                os.rename(os.path.join(album_path, file), os.path.join(misc_path, file))
 
 
 def check_poster(args, data_json):
