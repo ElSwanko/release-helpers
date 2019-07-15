@@ -360,10 +360,11 @@ def check_aucdtect_report(args, album, parent=None):
 def check_other_reports(args, album, parent=None):
     for ext in REPO_EXTS:
         album_path = get_album_path(args, album, parent)
-        misc_path = get_misc_path(args, album, parent)
         for file in os.listdir(album_path):
-            if os.path.isfile(file) and file.endswith(ext):
-                os.rename(os.path.join(album_path, file), os.path.join(misc_path, file))
+            main_path = os.path.join(album_path, file)
+            misc_path = os.path.join(get_misc_path(args, album, parent), file)
+            if os.path.isfile(main_path) and file.endswith(ext) and not os.path.isfile(misc_path):
+                os.rename(main_path, misc_path)
 
 
 def check_poster(args, data_json):
