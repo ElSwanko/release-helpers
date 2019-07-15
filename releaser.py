@@ -282,7 +282,7 @@ def check_resources(args, data_json):
             if len(album.get('spectrograms')) == 0:
                 album['spectrograms'] = get_spectrograms(args, album, parent)
             check_aucdtect_report(args, album, parent)
-            check_ext_resource(args, album, parent)
+            check_other_reports(args, album, parent)
         check_poster(args, data_json)
     check_ext_resource(args, ARTISTS_NAME)
     check_ext_resource(args, DESC_NAME)
