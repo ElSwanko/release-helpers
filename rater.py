@@ -32,10 +32,9 @@ def rate(args):
     back.paste(sign, offset, mask=sign)
     back = back.convert('RGB')
 
-    result_img = os.path.basename(args.image_path).split('.')[0] + '_%02d+.jpeg' % args.age_rating
+    result_img = os.path.basename(args.image_path).split('.')[0] + '_%02d+.webp' % args.age_rating
     ImageFile.MAXBLOCK = 2 * img.size[0] * img.size[1]
-    back.save(os.path.join(os.path.dirname(args.image_path), result_img),
-              'JPEG', quality=95, optimize=True, progressive=True)
+    back.save(os.path.join(os.path.dirname(args.image_path), result_img), 'WebP', quality=95)
 
 
 def resize_img(args, img):
